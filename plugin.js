@@ -1,19 +1,20 @@
 (function () {
     'use strict';
 
-    // РАДАР 1: Проверяем, что файл долетел
+    // РАДАР: Проверяем запуск
     setTimeout(function() {
         if (window.Lampa && window.Lampa.Noty) {
-            Lampa.Noty.show('⚙️ Keenetic: Скрипт загружен!');
+            Lampa.Noty.show('⚙️ Keenetic: Скрипт успешно запущен!');
         }
     }, 1000);
 
-    // === ФУНКЦИИ ПОЛУЧЕНИЯ НАСТРОЕК (с защитой от пустых полей) ===
-    const getRouterIp = () => Lampa.Storage.get('keenetic_ip') || '192.168.2.1';
-    const getRouterPort = () => Lampa.Storage.get('keenetic_port') || '8090';
-    const getRpcPath = () => Lampa.Storage.get('keenetic_rpc_path') || '/transmission/rpc';
-    const getLogin = () => Lampa.Storage.get('keenetic_login') || '';
-    const getPassword = () => Lampa.Storage.get('keenetic_password') || '';
+    // === ФУНКЦИИ ПОЛУЧЕНИЯ НАСТРОЕК ===
+    // Используем НОВЫЕ ключи (kn_), чтобы обойти зависший кэш памяти Лампы
+    const getRouterIp = () => Lampa.Storage.get('kn_ip') || '192.168.2.1';
+    const getRouterPort = () => Lampa.Storage.get('kn_port') || '8090';
+    const getRpcPath = () => Lampa.Storage.get('kn_rpc_path') || '/transmission/rpc';
+    const getLogin = () => Lampa.Storage.get('kn_login') || '';
+    const getPassword = () => Lampa.Storage.get('kn_password') || '';
 
     const getRpcUrl = () => `http://${getRouterIp()}:${getRouterPort()}${getRpcPath()}`;
     const getAuthHeader = () => 'Basic ' + btoa(`${getLogin()}:${getPassword()}`);
@@ -100,14 +101,14 @@
         try {
             const iconSvg = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
             
-            // 1. Создаем настройки (Безопасный метод без жестких default)
+            // 1. Создаем настройки с новыми ключами (kn_) и правильной архитектурой
             if (window.Lampa && Lampa.SettingsApi) {
                 Lampa.SettingsApi.addComponent({ component: 'keenetic_settings', name: 'Keenetic', icon: iconSvg });
-                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_ip', type: 'input', placeholder: '192.168.2.1', values: '', default: '' }, field: { name: 'IP адрес роутера' } });
-                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_port', type: 'input', placeholder: '8090', values: '', default: '' }, field: { name: 'Порт Transmission' } });
-                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_rpc_path', type: 'input', placeholder: '/transmission/rpc', values: '', default: '' }, field: { name: 'Путь RPC' } });
-                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_login', type: 'input', placeholder: 'admin', values: '', default: '' }, field: { name: 'Логин' } });
-                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_password', type: 'input', placeholder: 'Пароль', values: '', default: '' }, field: { name: 'Пароль' } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'kn_ip', type: 'input', placeholder: '192.168.2.1', values: '', default: '' }, field: { name: 'IP адрес роутера' }, onChange: function() { Lampa.Settings.update(); } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'kn_port', type: 'input', placeholder: '8090', values: '', default: '' }, field: { name: 'Порт Transmission' }, onChange: function() { Lampa.Settings.update(); } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'kn_rpc_path', type: 'input', placeholder: '/transmission/rpc', values: '', default: '' }, field: { name: 'Путь RPC' }, onChange: function() { Lampa.Settings.update(); } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'kn_login', type: 'input', placeholder: 'admin', values: '', default: '' }, field: { name: 'Логин' }, onChange: function() { Lampa.Settings.update(); } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'kn_password', type: 'input', placeholder: 'Пароль', values: '', default: '' }, field: { name: 'Пароль' }, onChange: function() { Lampa.Settings.update(); } });
             }
 
             // 2. Добавляем кнопку в меню
