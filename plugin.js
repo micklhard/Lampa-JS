@@ -1,34 +1,23 @@
 (function () {
     'use strict';
 
-    // === ФУНКЦИИ ДЛЯ ПОЛУЧЕНИЯ НАСТРОЕК ===
-    // Используем Lampa.Storage для чтения сохраненных значений или возврата значений по умолчанию
+    // === 1. ПОЛУЧЕНИЕ НАСТРОЕК ИЗ LAMPA ===
     const getRouterIp = () => Lampa.Storage.get('keenetic_ip', '192.168.2.1');
     const getRouterPort = () => Lampa.Storage.get('keenetic_port', '8090');
     const getRpcPath = () => Lampa.Storage.get('keenetic_rpc_path', '/transmission/rpc');
     const getLogin = () => Lampa.Storage.get('keenetic_login', '');
     const getPassword = () => Lampa.Storage.get('keenetic_password', '');
 
-    // Динамически формируем URL и заголовок на основе текущих настроек
     const getRpcUrl = () => `http://${getRouterIp()}:${getRouterPort()}${getRpcPath()}`;
     const getAuthHeader = () => 'Basic ' + btoa(`${getLogin()}:${getPassword()}`);
 
-    // Переменная для хранения ID сессии Transmission
     let sessionId = '';
 
-    /**
-     * Выполняет запрос к API Transmission.
-     * Автоматически обрабатывает ошибку 409 и получает новый X-Transmission-Session-Id для повторного запроса.
-     * @param {Object} payload - Тело запроса в формате JSON API Transmission
-     * @returns {Promise<Object>} - Ответ от сервера
-     */
+    // === 2. ЯДРО ЗАПРОСОВ К TRANSMISSION ===
     async function transmissionRequest(payload) {
         if (!getLogin() || !getPassword()) {
-            Lampa.Bell.push({
-                title: 'Мой Keenetic',
-                text: 'Пожалуйста, укажите логин и пароль в настройках'
-            });
-            throw new Error('Учетные данные не настроены');
+            Lampa.Bell.push({ title: 'Keenetic', text: 'Укажите логин и пароль в настройках!' });
+            throw new Error('No credentials');
         }
 
         const headers = {
@@ -36,29 +25,21 @@
             'Content-Type': 'application/json'
         };
 
-        // Если у нас уже есть сохраненный ID сессии, добавляем его в заголовки
-        if (sessionId) {
-            headers['X-Transmission-Session-Id'] = sessionId;
-        }
+        if (sessionId) headers['X-Transmission-Session-Id'] = sessionId;
 
         try {
-            // Отправляем первый POST-запрос
             let response = await fetch(getRpcUrl(), {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify(payload)
             });
 
-            // Особенность Transmission API:
-            // Если получаем 409 Conflict, значит нужно обновить Session Id из заголовков ответа
+            // Обработка защиты Transmission (409 Conflict)
             if (response.status === 409) {
                 sessionId = response.headers.get('X-Transmission-Session-Id');
-                if (!sessionId) {
-                    throw new Error('Не удалось получить X-Transmission-Session-Id из ответа сервера');
-                }
-                
-                // Обновляем заголовок с новым Session Id и повторяем запрос
                 headers['X-Transmission-Session-Id'] = sessionId;
+                
+                // Повторяем запрос с правильным ключом сессии
                 response = await fetch(getRpcUrl(), {
                     method: 'POST',
                     headers: headers,
@@ -66,157 +47,114 @@
                 });
             }
 
-            // Если статус не 200 OK, бросаем ошибку
-            if (!response.ok) {
-                throw new Error(`Ошибка HTTP: ${response.status}`);
-            }
-
-            // Парсим успешный ответ в JSON
+            if (!response.ok) throw new Error(`HTTP: ${response.status}`);
             return await response.json();
         } catch (error) {
-            console.error('Transmission API Error:', error);
+            console.error('Keenetic API Error:', error);
             throw error;
         }
     }
 
-    /**
-     * Проверка связи с роутером путем запроса 'session-get'
-     */
-    async function testConnection() {
+    // === 3. ОТПРАВКА ТОРРЕНТА НА РОУТЕР ===
+    async function addTorrentToKeenetic(magnetUrl, title) {
         try {
-            // Метод session-get возвращает текущие настройки сессии Transmission
+            Lampa.Bell.push({ title: 'Keenetic', text: 'Отправляем задачу на роутер...' });
+            
             const response = await transmissionRequest({
-                method: 'session-get'
+                method: 'torrent-add',
+                arguments: {
+                    filename: magnetUrl,
+                    paused: false // Сразу начинать загрузку
+                }
             });
 
-            // Успешный ответ всегда содержит поле result со значением 'success'
             if (response && response.result === 'success') {
-                Lampa.Bell.push({
-                    title: 'Мой Keenetic',
-                    text: 'Связь с Keenetic установлена!'
+                Lampa.Bell.push({ 
+                    title: 'Keenetic', 
+                    text: `✅ Успешно добавлено:\n${title}` 
                 });
             } else {
-                throw new Error('Некорректный ответ сервера');
+                throw new Error('Ошибка при добавлении торрента');
             }
         } catch (error) {
-            // Ошибка уже выведена в консоль или в Bell выше
-            if (error.message !== 'Учетные данные не настроены') {
-                Lampa.Bell.push({
-                    title: 'Мой Keenetic',
-                    text: 'Ошибка подключения'
-                });
+            Lampa.Bell.push({ title: 'Keenetic', text: '❌ Ошибка при отправке торрента' });
+        }
+    }
+
+    // === 4. ТЕСТОВОЕ СОЕДИНЕНИЕ (Для кнопки в меню) ===
+    async function testConnection() {
+        try {
+            const response = await transmissionRequest({ method: 'session-get' });
+            if (response && response.result === 'success') {
+                Lampa.Bell.push({ title: 'Keenetic', text: '🟢 Связь с роутером работает идеально!' });
+            } else {
+                throw new Error('Некорректный ответ');
+            }
+        } catch (error) {
+            if (error.message !== 'No credentials') {
+                Lampa.Bell.push({ title: 'Keenetic', text: '🔴 Ошибка подключения. Проверьте IP и пароль.' });
             }
         }
     }
 
-    /**
-     * Инициализация раздела настроек плагина.
-     * Используем Lampa.SettingsApi для создания нового раздела в "Настройках".
-     */
+    // === 5. ИНТЕРФЕЙС НАСТРОЕК В ЛАМПЕ ===
     function initSettings() {
         if (!window.Lampa || !window.Lampa.SettingsApi) return;
 
-        // Иконка для раздела настроек и меню
         const iconSvg = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
 
-        // Добавляем новый раздел в настройки
         Lampa.SettingsApi.addComponent({
             component: 'keenetic_settings',
             name: 'Keenetic',
             icon: iconSvg
         });
 
-        // --- Добавляем параметры в созданный раздел ---
-
-        Lampa.SettingsApi.addParam({
-            component: 'keenetic_settings',
-            param: {
-                name: 'keenetic_ip',
-                type: 'input',
-                default: '192.168.2.1'
-            },
-            field: {
-                name: 'IP адрес роутера',
-                description: 'Например: 192.168.2.1'
-            }
-        });
-
-        Lampa.SettingsApi.addParam({
-            component: 'keenetic_settings',
-            param: {
-                name: 'keenetic_port',
-                type: 'input',
-                default: '8090'
-            },
-            field: {
-                name: 'Порт Transmission',
-                description: 'По умолчанию: 8090'
-            }
-        });
-
-        Lampa.SettingsApi.addParam({
-            component: 'keenetic_settings',
-            param: {
-                name: 'keenetic_rpc_path',
-                type: 'input',
-                default: '/transmission/rpc'
-            },
-            field: {
-                name: 'Путь RPC',
-                description: 'Обычно: /transmission/rpc'
-            }
-        });
-
-        Lampa.SettingsApi.addParam({
-            component: 'keenetic_settings',
-            param: {
-                name: 'keenetic_login',
-                type: 'input',
-                default: ''
-            },
-            field: {
-                name: 'Логин',
-                description: 'Логин от админки Keenetic'
-            }
-        });
-
-        Lampa.SettingsApi.addParam({
-            component: 'keenetic_settings',
-            param: {
-                name: 'keenetic_password',
-                type: 'input',
-                default: ''
-            },
-            field: {
-                name: 'Пароль',
-                description: 'Пароль от админки Keenetic'
-            }
-        });
+        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_ip', type: 'input', default: '192.168.2.1' }, field: { name: 'IP адрес роутера' } });
+        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_port', type: 'input', default: '8090' }, field: { name: 'Порт Transmission' } });
+        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_rpc_path', type: 'input', default: '/transmission/rpc' }, field: { name: 'Путь RPC' } });
+        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_login', type: 'input', default: '' }, field: { name: 'Логин' } });
+        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_password', type: 'input', default: '' }, field: { name: 'Пароль' } });
     }
 
-    /**
-     * Инициализация плагина.
-     * Добавляет пункт в главное меню Lampa и инициализирует настройки.
-     */
+    // === 6. ИНТЕГРАЦИЯ В LAMPA (Кнопки и меню) ===
     function init() {
-        // Инициализируем настройки
-        initSettings();
+        try {
+            initSettings();
 
-        // Добавляем пункт в главное меню, используя встроенный метод Lampa
-        if (Lampa.Menu && Lampa.Menu.addButton) {
-            Lampa.Menu.addButton({
-                id: 'keenetic_transmission',
-                name: 'Мой Keenetic',
-                icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>',
-                action: function () {
-                    // При клике по пункту меню запускаем проверку соединения
+            // Добавляем тестовую кнопку в левое меню Лампы
+            if (window.Lampa && Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
+                const iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
+                Lampa.Menu.addButton(iconSvg, 'Мой Keenetic', function () {
                     testConnection();
+                });
+            }
+
+            // ПЕРЕХВАТЧИК СОБЫТИЙ ТОРРЕНТОВ
+            // Слушаем, когда пользователь зажимает кнопку на раздаче
+            Lampa.Listener.follow('torrent', function (e) {
+                if (e.type === 'onlong') { // 'onlong' срабатывает при долгом нажатии "ОК" на пульте
+                    let selectedTorrent = e.element;
+                    let magnet = selectedTorrent.MagnetUri || selectedTorrent.Link;
+                    let title = selectedTorrent.title || 'Выбранный торрент';
+
+                    // Добавляем нашу кнопку в всплывающее меню
+                    if (magnet) {
+                        e.menu.push({
+                            title: '📥 Скачать на Keenetic',
+                            onSelect: function () {
+                                addTorrentToKeenetic(magnet, title);
+                            }
+                        });
+                    }
                 }
             });
+
+        } catch (e) {
+            console.error('Keenetic Plugin Error:', e);
         }
     }
 
-    // Интеграция в жизненный цикл приложения Lampa
+    // Запускаем плагин, когда Лампа готова
     function startPlugin() {
         window.keenetic_plugin_initialized = true;
         init();
