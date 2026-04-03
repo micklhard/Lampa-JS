@@ -126,6 +126,15 @@
             icon: iconSvg
         });
 
+        // Регистрируем раздел в главном меню настроек, чтобы он отображался
+        if (Lampa.Settings && Lampa.Settings.main) {
+            Lampa.Settings.main().push({
+                title: 'Keenetic',
+                icon: iconSvg,
+                component: 'keenetic_settings'
+            });
+        }
+
         // --- Добавляем параметры в созданный раздел ---
 
         Lampa.SettingsApi.addParam({
@@ -222,13 +231,17 @@
     }
 
     // Интеграция в жизненный цикл приложения Lampa
-    // Запускаем инициализацию, когда приложение сообщает, что оно готово
-    if (window.appready) {
+    function startPlugin() {
+        window.keenetic_plugin_initialized = true;
         init();
+    }
+
+    if (window.appready) {
+        startPlugin();
     } else {
         Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'ready') {
-                init();
+            if (e.type === 'ready' && !window.keenetic_plugin_initialized) {
+                startPlugin();
             }
         });
     }
