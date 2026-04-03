@@ -1,27 +1,26 @@
 (function () {
     'use strict';
 
-    // === ВИЗУАЛЬНАЯ ДИАГНОСТИКА СТАРТА ===
-    // Если скрипт скачался и запустился, через 2 секунды на ТВ появится это уведомление
+    // РАДАР 1: Проверяем, что файл вообще долетел и запустился
     setTimeout(function() {
-        if (window.Lampa && Lampa.Noty) {
-            Lampa.Noty.show('⏳ Keenetic: Запуск плагина...');
+        if (window.Lampa && window.Lampa.Noty) {
+            Lampa.Noty.show('⚙️ Keenetic: Скрипт загружен в память!');
         }
-    }, 2000);
+    }, 1000);
 
-    // === 1. ПОЛУЧЕНИЕ НАСТРОЕК ИЗ LAMPA ===
-    const getRouterIp = () => Lampa.Storage.get('keenetic_ip', '192.168.2.1');
-    const getRouterPort = () => Lampa.Storage.get('keenetic_port', '8090');
-    const getRpcPath = () => Lampa.Storage.get('keenetic_rpc_path', '/transmission/rpc');
-    const getLogin = () => Lampa.Storage.get('keenetic_login', '');
-    const getPassword = () => Lampa.Storage.get('keenetic_password', '');
+    // === ФУНКЦИИ ПОЛУЧЕНИЯ НАСТРОЕК ===
+    const getRouterIp = () => Lampa.Storage.field('keenetic_ip') || '192.168.2.1';
+    const getRouterPort = () => Lampa.Storage.field('keenetic_port') || '8090';
+    const getRpcPath = () => Lampa.Storage.field('keenetic_rpc_path') || '/transmission/rpc';
+    const getLogin = () => Lampa.Storage.field('keenetic_login') || '';
+    const getPassword = () => Lampa.Storage.field('keenetic_password') || '';
 
     const getRpcUrl = () => `http://${getRouterIp()}:${getRouterPort()}${getRpcPath()}`;
     const getAuthHeader = () => 'Basic ' + btoa(`${getLogin()}:${getPassword()}`);
 
     let sessionId = '';
 
-    // === 2. ЯДРО ЗАПРОСОВ К TRANSMISSION ===
+    // === ЯДРО ЗАПРОСОВ К РОУТЕРУ ===
     async function transmissionRequest(payload) {
         if (!getLogin() || !getPassword()) {
             Lampa.Bell.push({ title: 'Keenetic', text: 'Укажите логин и пароль в настройках!' });
@@ -60,17 +59,14 @@
         }
     }
 
-    // === 3. ОТПРАВКА ТОРРЕНТА НА РОУТЕР ===
+    // === ОТПРАВКА ТОРРЕНТА ===
     async function addTorrentToKeenetic(magnetUrl, title) {
         try {
             Lampa.Bell.push({ title: 'Keenetic', text: 'Отправляем задачу на роутер...' });
             
             const response = await transmissionRequest({
                 method: 'torrent-add',
-                arguments: {
-                    filename: magnetUrl,
-                    paused: false
-                }
+                arguments: { filename: magnetUrl, paused: false }
             });
 
             if (response && response.result === 'success') {
@@ -83,12 +79,12 @@
         }
     }
 
-    // === 4. ТЕСТОВОЕ СОЕДИНЕНИЕ ===
+    // === ПРОВЕРКА СВЯЗИ ===
     async function testConnection() {
         try {
             const response = await transmissionRequest({ method: 'session-get' });
             if (response && response.result === 'success') {
-                Lampa.Bell.push({ title: 'Keenetic', text: '🟢 Связь работает идеально!' });
+                Lampa.Bell.push({ title: 'Keenetic', text: '🟢 Связь с роутером работает идеально!' });
             } else {
                 throw new Error('Некорректный ответ');
             }
@@ -99,42 +95,34 @@
         }
     }
 
-    // === 5. ИНТЕРФЕЙС НАСТРОЕК ===
-    function initSettings() {
-        if (!window.Lampa || !window.Lampa.SettingsApi) return;
-        const iconSvg = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
-        
-        Lampa.SettingsApi.addComponent({ component: 'keenetic_settings', name: 'Keenetic', icon: iconSvg });
-        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_ip', type: 'input', default: '192.168.2.1' }, field: { name: 'IP адрес роутера' } });
-        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_port', type: 'input', default: '8090' }, field: { name: 'Порт Transmission' } });
-        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_rpc_path', type: 'input', default: '/transmission/rpc' }, field: { name: 'Путь RPC' } });
-        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_login', type: 'input', default: '' }, field: { name: 'Логин' } });
-        Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_password', type: 'input', default: '' }, field: { name: 'Пароль' } });
-    }
-
-    // === 6. ИНТЕГРАЦИЯ В LAMPA ===
+    // === СОЗДАНИЕ ИНТЕРФЕЙСА ===
     function init() {
         try {
-            initSettings();
-
-            // Железобетонное добавление пункта меню через jQuery
-            const iconSvg = '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
-            let menuItem = $(`<li class="menu__item selector"><div class="menu__ico">${iconSvg}</div><div class="menu__text">Мой Keenetic</div></li>`);
+            // 1. Создаем настройки
+            const iconSvg = '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>';
             
-            menuItem.on('hover:enter', function () { testConnection(); });
-
-            // Функция для вставки меню с проверкой
-            function injectMenu() {
-                if ($('.menu .menu__list').length) {
-                    $('.menu .menu__list').eq(0).append(menuItem);
-                } else {
-                    // Если меню еще не появилось, ждем полсекунды и пробуем снова
-                    setTimeout(injectMenu, 500);
-                }
+            if (window.Lampa && Lampa.SettingsApi) {
+                Lampa.SettingsApi.addComponent({ component: 'keenetic_settings', name: 'Keenetic', icon: iconSvg });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_ip', type: 'input', default: '192.168.2.1' }, field: { name: 'IP адрес роутера' } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_port', type: 'input', default: '8090' }, field: { name: 'Порт Transmission' } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_rpc_path', type: 'input', default: '/transmission/rpc' }, field: { name: 'Путь RPC' } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_login', type: 'input', default: '' }, field: { name: 'Логин' } });
+                Lampa.SettingsApi.addParam({ component: 'keenetic_settings', param: { name: 'keenetic_password', type: 'input', default: '' }, field: { name: 'Пароль' } });
             }
-            injectMenu();
 
-            // Перехватчик торрентов
+            // 2. Добавляем кнопку в меню самым надежным методом
+            if (window.Lampa && Lampa.Menu && typeof Lampa.Menu.addButton === 'function') {
+                Lampa.Menu.addButton({
+                    id: 'my_keenetic',
+                    name: 'Мой Keenetic',
+                    icon: iconSvg,
+                    action: function () {
+                        testConnection();
+                    }
+                });
+            }
+
+            // 3. Перехватчик торрентов
             Lampa.Listener.follow('torrent', function (e) {
                 if (e.type === 'onlong') {
                     let magnet = e.element.MagnetUri || e.element.Link;
@@ -148,30 +136,30 @@
                 }
             });
 
-            // Сообщаем об успехе
+            // РАДАР 2: Подтверждаем, что всё отрисовалось
             setTimeout(function() {
-                if (window.Lampa && Lampa.Noty) Lampa.Noty.show('✅ Плагин Keenetic установлен!');
-            }, 3000);
+                if (window.Lampa && Lampa.Noty) Lampa.Noty.show('✅ Keenetic: Интерфейс успешно загружен!');
+            }, 500);
 
         } catch (e) {
-            // Если что-то сломалось, выводим ошибку на экран ТВ
             if (window.Lampa && Lampa.Noty) Lampa.Noty.show('❌ Ошибка плагина: ' + e.message);
         }
     }
 
-    // === 7. ЗАПУСК ===
+    // === ПРАВИЛЬНЫЙ СТАРТ ИЗ ИСХОДНИКОВ LME ===
     function startPlugin() {
-        if (window.keenetic_plugin_initialized) return;
-        window.keenetic_plugin_initialized = true;
-        init();
+        window.plugin_mykeenetic_ready = true;
+        if (window.appready) {
+            init();
+        } else {
+            Lampa.Listener.follow('app', function (e) {
+                if (e.type === 'ready') init();
+            });
+        }
     }
 
-    if (window.appready) {
+    if (!window.plugin_mykeenetic_ready) {
         startPlugin();
-    } else {
-        Lampa.Listener.follow('app', function (e) {
-            if (e.type === 'ready') startPlugin();
-        });
     }
 
 })();
