@@ -126,15 +126,6 @@
             icon: iconSvg
         });
 
-        // Регистрируем раздел в главном меню настроек, чтобы он отображался
-        if (Lampa.Settings && Lampa.Settings.main) {
-            Lampa.Settings.main().push({
-                title: 'Keenetic',
-                icon: iconSvg,
-                component: 'keenetic_settings'
-            });
-        }
-
         // --- Добавляем параметры в созданный раздел ---
 
         Lampa.SettingsApi.addParam({
@@ -211,23 +202,18 @@
         // Инициализируем настройки
         initSettings();
 
-        // Добавляем пункт в главное меню через jQuery
-        let myItem = $(`
-            <div class="menu__item selector">
-                <div class="menu__ico">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>
-                </div>
-                <div class="menu__text">Мой Keenetic</div>
-            </div>
-        `);
-
-        myItem.on('hover:enter', function () {
-            // При клике по пункту меню запускаем проверку соединения
-            testConnection();
-        });
-
-        // Добавляем в конец списка меню
-        $('.menu__list').eq(0).append(myItem);
+        // Добавляем пункт в главное меню, используя встроенный метод Lampa
+        if (Lampa.Menu && Lampa.Menu.addButton) {
+            Lampa.Menu.addButton({
+                id: 'keenetic_transmission',
+                name: 'Мой Keenetic',
+                icon: '<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 4C16.4183 4 20 7.58172 20 12C20 16.4183 16.4183 20 12 20C7.58172 20 4 16.4183 4 12C4 7.58172 7.58172 4 12 4ZM11 16V8L16 12L11 16Z" fill="currentColor"/></svg>',
+                action: function () {
+                    // При клике по пункту меню запускаем проверку соединения
+                    testConnection();
+                }
+            });
+        }
     }
 
     // Интеграция в жизненный цикл приложения Lampa
